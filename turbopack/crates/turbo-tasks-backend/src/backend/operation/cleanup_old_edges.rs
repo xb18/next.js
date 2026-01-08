@@ -39,7 +39,7 @@ pub enum CleanupOldEdgesOperation {
 pub enum OutdatedEdge {
     Child(TaskId),
     Collectible(CollectibleRef, i32),
-    CellDependency(CellRef),
+    CellDependency(CellRef, Option<u64>),
     OutputDependency(TaskId),
     CollectiblesDependency(CollectiblesRef),
 }
@@ -152,14 +152,18 @@ impl Operation for CleanupOldEdgesOperation {
                                     AggregatedDataUpdate::new().collectibles_update(collectibles),
                                 ));
                             }
-                            OutdatedEdge::CellDependency(CellRef {
-                                task: cell_task_id,
-                                cell,
-                            }) => {
+                            OutdatedEdge::CellDependency(
+                                CellRef {
+                                    task: cell_task_id,
+                                    cell,
+                                },
+                                key,
+                            ) => {
                                 {
                                     let mut task = ctx.task(cell_task_id, TaskDataCategory::Data);
                                     task.remove(&CachedDataItemKey::CellDependent {
                                         cell,
+                                        key,
                                         task: task_id,
                                     });
                                 }
@@ -170,6 +174,7 @@ impl Operation for CleanupOldEdgesOperation {
                                             task: cell_task_id,
                                             cell,
                                         },
+                                        key,
                                     });
                                 }
                             }
