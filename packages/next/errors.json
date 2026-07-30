@@ -1504,5 +1504,14 @@
   "1503": "Missing workStore while reading the variant \\`%s\\`.",
   "1504": "Route %s read the variant \\`%s\\` while prerendering, which is not supported yet.",
   "1505": "Route %s read the variant \\`%s\\`, but no value was resolved for this request. This usually means the route is not covered by your \\`proxy.ts\\` matcher.",
-  "1506": "the variant \\`%s\\` must not be read within a Client Component. Next.js should be preventing variants from being included in Client Components, but did not in this case."
+  "1506": "the variant \\`%s\\` must not be read within a Client Component. Next.js should be preventing variants from being included in Client Components, but did not in this case.",
+  "1507": "%s a %s value. Variant values must be strings.",
+  "1508": "Invalid value at index %s returned from generateStaticParams for \"%s\". \\`withVariants()\\` may only be returned from a page's generateStaticParams, because the set of prerendered combinations is decided per page. Return plain params from this segment and enumerate the variants in the page beneath it.",
+  "1509": "`withVariants()` expects each assignment to start with a variant. Pass the value exported from a `'use variants'` module, for example `[theme, 'dark']`.",
+  "1510": "\\`withVariants()\\` received the variant \\`%s\\` more than once. A variant can only be assigned one value per prerendered combination.",
+  "1511": "Route %s read the variant \\`%s\\` while prerendering, but that variant was not enumerated for this route. Return it from \\`generateStaticParams\\` with \\`withVariants()\\`, or read it behind \\`await connection()\\` so it resolves at request time.",
+  "1512": "`withVariants()` expects each variant assignment to be a `[variant, value]` tuple.",
+  "1513": "Invalid value at index %s returned from generateStaticParams for \"%s\". Expected the first argument to withVariants() to be an object, but received type %s. See more info here: https://nextjs.org/docs/messages/generate-static-params",
+  "1514": "%s %s, which contains characters that cannot be used in a variant value. Variant values may not contain \\`/\\`, \\`&\\`, \\`=\\`, \\`%\\`, \\`+\\`, or whitespace.",
+  "1515": "Unexpected prerender store type while reading the variant \\`%s\\`."
 }
