@@ -410,10 +410,6 @@ const ALLOWED_HEADERS: string[] = [
   PRERENDER_REVALIDATE_ONLY_GENERATED_HEADER,
   NEXT_CACHE_REVALIDATED_TAGS_HEADER,
   NEXT_CACHE_REVALIDATE_TAG_TOKEN_HEADER,
-  // Carries the resolved variant values. The path only holds their hash, so
-  // without this a prerender generated on demand, or a revalidation, would have
-  // no values to render against.
-  NEXT_VARIANTS_HEADER,
 ]
 
 export type PrerenderManifest = {
@@ -3028,6 +3024,25 @@ export default async function build(
         preview: previewProps,
       }
 
+      // The variants header is only meaningful to a project that has variants,
+      // and every route's `allowHeader` is part of the build output, so adding
+      // it unconditionally would change the output of every project that does
+      // not.
+      //
+      // TODO(variants): narrow this gate. The flag only stands in for the
+      // question until GA removes it; whether the project exports a variant at
+      // all is equally sound and outlives it. Per-route is the end state, since
+      // `allowHeader` is already per entry, but it needs the emit/collect
+      // substrate to answer which routes can reach a variant reader. Not
+      // `generateStaticVariants`: declaring is not reading, and a route reading
+      // an *undeclared* variant needs the header most, because the value
+      // arriving at request time is the only thing that fills the hole. Stay
+      // over-inclusive when unsure — `allowHeader` forwards without keying, so
+      // a spare header costs bytes while a missing one becomes a hanging read.
+      const allowHeader: string[] = config.experimental.variants
+        ? [...ALLOWED_HEADERS, NEXT_VARIANTS_HEADER]
+        : ALLOWED_HEADERS
+
       // Accumulate per-route segment inlining decisions for
       // prefetch-hints.json. First-writer-wins: if multiple param
       // combinations exist for the same route pattern, use the first one.
@@ -3626,7 +3641,7 @@ export default async function build(
                   srcRoute: page,
                   dataRoute,
                   prefetchDataRoute,
-                  allowHeader: ALLOWED_HEADERS,
+                  allowHeader,
                 }
 
                 if (route.variantValues) {
@@ -4005,7 +4020,7 @@ export default async function build(
                           excludeOptionalTrailingSlash: true,
                         }).re.source
                       ),
-                  allowHeader: ALLOWED_HEADERS,
+                  allowHeader,
                 }
               }
             }
@@ -4250,7 +4265,7 @@ export default async function build(
                         `${localePage}.json`
                       ),
                       prefetchDataRoute: undefined,
-                      allowHeader: ALLOWED_HEADERS,
+                      allowHeader,
                     }
                   }
                 } else {
@@ -4280,7 +4295,7 @@ export default async function build(
                     ),
                     // Pages does not have a prefetch data route.
                     prefetchDataRoute: undefined,
-                    allowHeader: ALLOWED_HEADERS,
+                    allowHeader,
                   }
                 }
                 if (pageInfo) {
@@ -4319,7 +4334,7 @@ export default async function build(
                     ),
                     // Pages does not have a prefetch data route.
                     prefetchDataRoute: undefined,
-                    allowHeader: ALLOWED_HEADERS,
+                    allowHeader,
                   }
 
                   if (pageInfo) {
@@ -4463,7 +4478,7 @@ export default async function build(
             // Pages does not have a prefetch data route.
             prefetchDataRoute: undefined,
             prefetchDataRouteRegex: undefined,
-            allowHeader: ALLOWED_HEADERS,
+            allowHeader,
           }
         })
 
