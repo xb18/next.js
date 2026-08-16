@@ -1497,5 +1497,7 @@
   "1496": "%s segments do not unblock new data in %s prefetches",
   "1497": "The following page files do not match any complete route:\\n%s\\n\\nEvery page must be part of at least one complete route. Add matching pages or default files for the sibling parallel route slots, or remove the unreachable pages.",
   "1498": "The following interception routes do not have a canonical route:\\n%s\\n\\nEvery interception route must have a matching non-interception route so the URL can be loaded directly or refreshed.",
-  "1499": "Invariant: strict route matching retained the incomplete route matcher %s"
+  "1499": "Invariant: strict route matching retained the incomplete route matcher %s",
+  "1500": "The following layouts have parallel route slots that cannot render the same URLs:\n%s\n\nEvery URL matched by one slot must have a matching page or default.tsx in every sibling slot.",
+  "1501": "The following layouts have parallel route slots that cannot render the same URLs:\\n%s\\n\\nEvery URL matched by one slot must have a matching page or default.tsx in every sibling slot."
 }
