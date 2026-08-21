@@ -1952,12 +1952,9 @@ impl Visit<SingleModuleGraphBuilderNode, RefData> for SingleModuleGraphBuilder<'
                     let _span = span.entered();
                     span = tracing::info_span!("per-entry reference");
                 }
-                ChunkingType::Emitted {
-                    namespace: merge_tag,
-                    ..
-                } => {
+                ChunkingType::Emitted { namespace, .. } => {
                     let _span = span.entered();
-                    span = tracing::info_span!("emitted reference", merge_tag = debug(&merge_tag));
+                    span = tracing::info_span!("emitted reference", namespace = debug(&namespace));
                 }
                 ChunkingType::Collected { namespace, .. } => {
                     let _span = span.entered();
