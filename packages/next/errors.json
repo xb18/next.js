@@ -1522,5 +1522,6 @@
   "1521": "\\`generateStaticVariants\\` for %s returned a combination containing something that is not a \\`[variant, value]\\` tuple.",
   "1522": "\\`generateStaticVariants\\` for %s did not return an array. Return a list of combinations, each a list of \\`[variant, value]\\` tuples.",
   "1523": "\\`generateStaticVariants\\` for %s declared two combinations that a single request can match, neither of which is more specific than the other: %s and %s. Give one of them the other's variants as well, so that it is the more specific match, or give them different values for a variant they share so that no request matches both.",
-  "1524": "\\`generateStaticVariants\\` for %s returned an empty combination. A combination assigns at least one variant; a prerender with every variant left dynamic is produced for the route anyway."
+  "1524": "\\`generateStaticVariants\\` for %s returned an empty combination. A combination assigns at least one variant; a prerender with every variant left dynamic is produced for the route anyway.",
+  "1525": "`unstable_variant()` expects a `decide` function as its first argument."
 }
