@@ -2079,7 +2079,6 @@ export async function handleBuildComplete({
 
     const dynamicRoutes: DynamicRouteItem[] = []
     const dynamicDataRoutes: DynamicRouteItem[] = []
-    const dynamicSegmentRoutes: DynamicRouteItem[] = []
 
     const getDestinationQuery = (routeKeys: Record<string, string>) => {
       const items = Object.entries(routeKeys ?? {})
@@ -2122,6 +2121,10 @@ export async function handleBuildComplete({
           route.page
         ) + getDestinationQuery(route.routeKeys)
 
+      // This route serves two kinds of request for the page: a request for the
+      // `.rsc` payload, and a per-segment prefetch request. The suffix group
+      // accepts both forms, and the destination copies the matched suffix, so
+      // each request resolves to the artifact that it asks for.
       if (appPageKeys && appPageKeys.length > 0) {
         dynamicRoutes.push({
           source: route.page + '.rsc',
@@ -2146,24 +2149,6 @@ export async function handleBuildComplete({
         has: isFallbackFalse ? fallbackFalseHasCondition : undefined,
         missing: undefined,
       })
-
-      for (const segmentRoute of route.prefetchSegmentDataRoutes || []) {
-        dynamicSegmentRoutes.push({
-          source: route.page,
-          sourceRegex: segmentRoute.source.replace(
-            '^',
-            `^${config.basePath && config.basePath !== '/' ? path.posix.join('/', config.basePath || '') : ''}[/]?`
-          ),
-          destination: path.posix.join(
-            '/',
-            config.basePath,
-            segmentRoute.destination +
-              getDestinationQuery(segmentRoute.routeKeys)
-          ),
-          has: undefined,
-          missing: undefined,
-        })
-      }
     }
 
     const needsMiddlewareResolveRoutes =
@@ -2267,7 +2252,6 @@ export async function handleBuildComplete({
 
       const combinedDynamicRoutes = [
         ...dynamicDataRoutes,
-        ...dynamicSegmentRoutes,
         ...dynamicRoutes,
       ] satisfies Route[]
 
