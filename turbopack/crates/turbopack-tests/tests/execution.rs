@@ -290,6 +290,10 @@ struct TestOptions {
     minify: bool,
     #[serde(default)]
     production_chunking: bool,
+    /// Assign numeric module ids, as production builds do, instead of the
+    /// human-readable ident-based ids tests use by default.
+    #[serde(default)]
+    numeric_module_ids: bool,
     /// Packages that are assumed to be side effect free, unless they declare otherwise in their
     /// package.json.
     #[serde(default)]
@@ -320,6 +324,7 @@ impl Default for TestOptions {
             infer_module_side_effects: default_true(),
             minify: false,
             production_chunking: false,
+            numeric_module_ids: false,
             side_effect_free_packages: Vec::new(),
             server_relative_root: default_true(),
         }
@@ -605,6 +610,17 @@ async fn run_test_operation(prepared_test: ResolvedVc<PreparedTest>) -> Result<V
     } else {
         None
     });
+
+    if options.numeric_module_ids {
+        // Production builds assign numeric module ids; the default ident-based
+        // ids are strings. Exercising both matters for code that keys off the
+        // module cache, since `ModuleId` is `string | number`.
+        builder = builder.module_id_strategy(
+            turbopack::global_module_ids::get_global_module_id_strategy(module_graph)
+                .to_resolved()
+                .await?,
+        );
+    }
 
     if options.remove_unused_imports {
         builder = builder.unused_references(
