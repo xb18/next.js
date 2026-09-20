@@ -13,7 +13,7 @@ use tracing::Instrument;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{
     Completion, OperationVc, ReadRef, ResolvedVc, TryJoinIterExt, ValueToString, ValueToStringRef,
-    Vc, trace::TraceRawVcs,
+    Vc,
 };
 use turbo_tasks_env::ProcessEnv;
 use turbo_tasks_fs::{
@@ -83,10 +83,10 @@ struct BytesBase64 {
 struct WebpackLoadersProcessingResult {
     #[serde(with = "either::serde_untagged")]
     #[bincode(with = "turbo_bincode::either")]
-    #[turbo_tasks(debug_ignore, trace_ignore)]
+    #[turbo_tasks(debug_ignore, unsafe_ignore)]
     source: Either<RcStr, BytesBase64>,
     map: Option<RcStr>,
-    #[turbo_tasks(trace_ignore)]
+    #[turbo_tasks(unsafe_ignore)]
     assets: Option<Vec<EmittedAsset>>,
 }
 
@@ -477,7 +477,7 @@ pub enum InfoMessage {
 }
 
 #[turbo_tasks::task_input]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, TraceRawVcs, Encode, Decode)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct WebpackResolveOptions {
     alias_fields: Option<Vec<RcStr>>,
@@ -534,7 +534,7 @@ pub enum ResponseMessage {
 }
 
 #[turbo_tasks::task_input]
-#[derive(Clone, PartialEq, Eq, Hash, Debug, TraceRawVcs, Encode, Decode)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Encode, Decode)]
 pub struct WebpackLoaderContext {
     pub entries: ResolvedVc<EvaluateEntries>,
     pub cwd: FileSystemPath,
@@ -1106,7 +1106,7 @@ impl Issue for EvaluateEmittedErrorIssue {
 pub struct EvaluateErrorLoggingIssue {
     pub source: IssueSource,
     pub severity: IssueSeverity,
-    #[turbo_tasks(trace_ignore)]
+    #[turbo_tasks(unsafe_ignore)]
     pub logging: Vec<LogInfo>,
     pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     pub assets_root: FileSystemPath,

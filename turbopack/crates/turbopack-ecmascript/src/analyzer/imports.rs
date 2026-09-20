@@ -50,13 +50,13 @@ use crate::{
 #[derive(Default, Debug, Clone, Hash)]
 pub struct ImportAnnotations {
     // TODO store this in more structured way
-    #[turbo_tasks(trace_ignore)]
+    #[turbo_tasks(unsafe_ignore)]
     #[bincode(with_serde)]
     map: BTreeMap<Wtf8Atom, Wtf8Atom>,
 
     /// Parsed turbopack loader configuration from import attributes.
     /// e.g. `import "file" with { turbopackLoader: "raw-loader" }`
-    #[turbo_tasks(trace_ignore)]
+    #[turbo_tasks(unsafe_ignore)]
     #[bincode(with_serde)]
     turbopack_loader: Option<WebpackLoaderItem>,
     turbopack_rename_as: Option<RcStr>,

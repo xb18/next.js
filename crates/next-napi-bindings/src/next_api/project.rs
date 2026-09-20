@@ -57,7 +57,6 @@ use turbo_tasks::{
     Vc, mark_top_level_task,
     message_queue::{CompilationEvent, Severity},
     read_strongly_consistent_and_apply_effects, take_effects,
-    trace::TraceRawVcs,
     unmark_top_level_task_may_leak_eventually_consistent_state,
 };
 use turbo_tasks_backend::{BackingStorageOptions, db_invalidation::invalidation_reasons};
@@ -1102,7 +1101,7 @@ pub struct NapiDebugBuildPaths {
 }
 
 #[turbo_tasks::task_input]
-#[derive(Clone, Copy, Debug, Eq, Hash, OperationValue, PartialEq, TraceRawVcs, Encode, Decode)]
+#[derive(Clone, Copy, Debug, Eq, Hash, OperationValue, PartialEq, Encode, Decode)]
 enum EntrypointsWritePhase {
     All,
     NonDeferred,
@@ -1136,7 +1135,7 @@ fn is_deferred_app_route(route: &str, deferred_entries: &[RcStr]) -> bool {
     })
 }
 
-#[derive(Clone, Debug, TraceRawVcs)]
+#[derive(Clone, Debug)]
 struct DeferredPhaseBuildPaths {
     non_deferred: DebugBuildPaths,
     all: DebugBuildPaths,
@@ -2400,7 +2399,7 @@ pub fn project_compilation_events_subscribe(
 
 #[napi(object)]
 #[turbo_tasks::task_input]
-#[derive(Clone, Debug, Eq, Hash, OperationValue, PartialEq, TraceRawVcs, Encode, Decode)]
+#[derive(Clone, Debug, Eq, Hash, OperationValue, PartialEq, Encode, Decode)]
 pub struct StackFrame {
     pub is_server: bool,
     pub is_ignored: Option<bool>,

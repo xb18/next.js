@@ -45,7 +45,7 @@ use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{
     Completion, Completions, FxIndexMap, InvalidationReason, NonLocalValue, OperationValue,
     OperationVc, ReadRef, ResolvedVc, State, TransientInstance, TryFlatJoinIterExt, TryJoinIterExt,
-    Vc, debug::ValueDebugFormat, fxindexmap, trace::TraceRawVcs,
+    Vc, debug::ValueDebugFormat, fxindexmap,
 };
 use turbo_tasks_env::{EnvMap, ProcessEnv};
 use turbo_tasks_fs::{
@@ -123,17 +123,7 @@ use crate::{
 
 #[turbo_tasks::task_input]
 #[derive(
-    Debug,
-    Serialize,
-    Deserialize,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    TraceRawVcs,
-    OperationValue,
-    Encode,
-    Decode,
+    Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, OperationValue, Encode, Decode,
 )]
 #[serde(rename_all = "camelCase")]
 pub struct DraftModeOptions {
@@ -153,7 +143,6 @@ pub struct DraftModeOptions {
     PartialEq,
     Eq,
     Hash,
-    TraceRawVcs,
     OperationValue,
     Encode,
     Decode,
@@ -178,7 +167,6 @@ pub struct WatchOptions {
     PartialEq,
     Eq,
     Hash,
-    TraceRawVcs,
     OperationValue,
     Encode,
     Decode,
@@ -292,7 +280,6 @@ impl DebugBuildPathsRouteKeys {
     Clone,
     PartialEq,
     Eq,
-    TraceRawVcs,
     NonLocalValue,
     OperationValue,
     Encode,
@@ -405,17 +392,7 @@ pub struct PartialProjectOptions {
 
 #[turbo_tasks::task_input]
 #[derive(
-    Debug,
-    Serialize,
-    Deserialize,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    TraceRawVcs,
-    OperationValue,
-    Encode,
-    Decode,
+    Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, OperationValue, Encode, Decode,
 )]
 #[serde(rename_all = "camelCase")]
 pub struct DefineEnv {
@@ -424,21 +401,19 @@ pub struct DefineEnv {
     pub nodejs: Vec<(RcStr, Option<RcStr>)>,
 }
 
-#[derive(TraceRawVcs, PartialEq, Eq, ValueDebugFormat, NonLocalValue, Encode, Decode)]
+#[derive(PartialEq, Eq, ValueDebugFormat, NonLocalValue, Encode, Decode)]
 pub struct Middleware {
     pub endpoint: ResolvedVc<Box<dyn Endpoint>>,
     pub is_proxy: bool,
 }
 
-#[derive(TraceRawVcs, PartialEq, Eq, ValueDebugFormat, NonLocalValue, Encode, Decode)]
+#[derive(PartialEq, Eq, ValueDebugFormat, NonLocalValue, Encode, Decode)]
 pub struct Instrumentation {
     pub node_js: ResolvedVc<Box<dyn Endpoint>>,
     pub edge: ResolvedVc<Box<dyn Endpoint>>,
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, NonLocalValue, OperationValue, TraceRawVcs, Encode, Decode,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, NonLocalValue, OperationValue, Encode, Decode)]
 struct ProjectFileSystemState {
     project_file_system: OperationVc<DiskFileSystem>,
     output_file_system: OperationVc<DiskFileSystem>,
@@ -450,7 +425,7 @@ pub struct ProjectContainer {
     options_state: State<Option<ProjectOptions>>,
     file_systems_state: State<Option<ProjectFileSystemState>>,
     additional_roots_state: State<Vec<(RcStr, AdditionalDiskFileSystem)>>,
-    #[turbo_tasks(debug_ignore, trace_ignore)]
+    #[turbo_tasks(debug_ignore, unsafe_ignore)]
     #[bincode(skip)]
     fs_map_init_lock: tokio::sync::Mutex<()>,
     versioned_content_map: Option<ResolvedVc<VersionedContentMap>>,
