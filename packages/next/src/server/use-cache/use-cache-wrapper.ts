@@ -18,6 +18,7 @@ import { workAsyncStorage } from '../app-render/work-async-storage.external'
 import type {
   PrerenderStoreModernClient,
   PrerenderStoreModernRuntime,
+  PrerenderStoreModernServer,
   PrivateUseCacheStore,
   RequestStore,
   RevalidateStore,
@@ -47,6 +48,7 @@ import {
   makePrefetchHangingPromise,
   makeUntrackedHangingPromise,
   RENDER_STAGES_BY_DATA_KIND,
+  trackFallbackParamsAccessed,
   trackIncompatibleShellContent,
   trackPromiseUsed,
 } from '../dynamic-rendering-utils'
@@ -820,18 +822,26 @@ function createUseCacheStore(
         outerWorkUnitStore satisfies never
     }
 
+    let fallbackRootParamsPrerender: PrerenderStoreModernServer | null = null
+    if (outerWorkUnitStore.type === 'cache') {
+      fallbackRootParamsPrerender =
+        outerWorkUnitStore.fallbackRootParamsPrerender
+    } else if (outerWorkUnitStore.type === 'prerender') {
+      const { fallbackRouteParams } = outerWorkUnitStore
+      if (
+        fallbackRouteParams !== null &&
+        Object.keys(outerWorkUnitStore.rootParams).some((name) =>
+          fallbackRouteParams.has(name)
+        )
+      ) {
+        fallbackRootParamsPrerender = outerWorkUnitStore
+      }
+    }
+
     return {
       type: 'cache',
       phase: 'render',
-      fallbackRootParamsPrerender:
-        outerWorkUnitStore.type === 'cache'
-          ? outerWorkUnitStore.fallbackRootParamsPrerender
-          : outerWorkUnitStore.type === 'prerender' &&
-              Object.keys(outerWorkUnitStore.rootParams).some((name) =>
-                outerWorkUnitStore.fallbackRouteParams?.has(name)
-              )
-            ? outerWorkUnitStore
-            : null,
+      fallbackRootParamsPrerender,
       consumerWillServerCache: true,
       implicitTags: outerWorkUnitStore.implicitTags,
       revalidate: defaultCacheLife.revalidate,
@@ -1487,7 +1497,7 @@ async function generateCacheEntryImpl(
       } else if (dynamicAccessAbortSignal?.aborted) {
         if (
           innerCacheStore.type === 'cache' &&
-          innerCacheStore.fallbackRootParamsPrerender
+          innerCacheStore.fallbackRootParamsPrerender !== null
         ) {
           // No entry is collected for an aborted fill. Still remember the
           // roots actually read so a concrete request won't join this result
@@ -1501,22 +1511,27 @@ async function generateCacheEntryImpl(
               prerenderStore.renderSignal,
               workStore.route,
               'dynamic "use cache"',
-              prerenderStore
+              // The single wrapper below tracks access when consumed.
+              null
             ),
             () => {
+              trackFallbackParamsAccessed(prerenderStore, 'dynamic "use cache"')
               // The result may also be consumed by a deduped invocation, so
               // record dependencies against the cache consuming it now.
               const consumer = workUnitAsyncStorage.getStore()
-              if (consumer?.type === 'cache') {
+              if (consumer !== undefined && consumer.type === 'cache') {
                 for (const name of innerCacheStore.readRootParamNames) {
                   consumer.readRootParamNames.add(name)
                 }
               }
               // Only a cache consuming this result must suspend. Do not share
               // cancellation with independent sibling cache fills.
-              dynamicAccessAsyncStorage
-                .getStore()
-                ?.abortController.abort(dynamicAccessAbortSignal.reason)
+              const dynamicAccessStore = dynamicAccessAsyncStorage.getStore()
+              if (dynamicAccessStore !== undefined) {
+                dynamicAccessStore.abortController.abort(
+                  dynamicAccessAbortSignal.reason
+                )
+              }
             }
           )
           getCacheSignal(outerWorkUnitStore)?.endRead()
