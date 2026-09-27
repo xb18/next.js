@@ -68,6 +68,8 @@ import {
   isChromeDevtoolsWorkspaceUrl,
 } from './chrome-devtools-workspace'
 import { getNextConfigRuntime, type NextConfigComplete } from '../config-shared'
+import { UPGRADE_ADVISORY_DEV_ENDPOINT } from '../../next-devtools/shared/upgrade-advisory'
+import type { createUpgradeAdvisory } from '../../lib/upgrade/dev-advisory'
 import {
   getRequestInsightsSnapshot,
   isRequestInsightsEnabled,
@@ -191,6 +193,7 @@ export async function initialize(opts: {
     | undefined = undefined
 
   let originalFetch = globalThis.fetch
+  let upgradeAdvisory: ReturnType<typeof createUpgradeAdvisory> | null = null
 
   if (opts.dev) {
     const { Telemetry } =
@@ -227,7 +230,16 @@ export async function initialize(opts: {
     ) {
       const { nudgeUpgrade, getUpgradeContext } =
         require('../../lib/upgrade/nudge') as typeof import('../../lib/upgrade/nudge')
+      const { createUpgradeAdvisory } =
+        require('../../lib/upgrade/dev-advisory') as typeof import('../../lib/upgrade/dev-advisory')
+      const upgradeContext = getUpgradeContext(developmentConfig)
+      upgradeAdvisory = createUpgradeAdvisory(
+        opts.dir,
+        upgradeContext,
+        process.env.__NEXT_VERSION || 'unknown'
+      )
       if (process.env.NEXT_PRIVATE_UPGRADE_PROMPT === '1' && process.send) {
+        const assessment = await upgradeAdvisory.assessment
         // TODO: Do not block dev startup while prompting for an upgrade.
         // Preserve all logs for display after the prompt and stop dev before Update.
         // The existing dev worker pauses here while its parent owns the menu.
@@ -242,11 +254,18 @@ export async function initialize(opts: {
           }
           process.on('message', resume)
           process.send!({
-            nextUpgradeContext: getUpgradeContext(developmentConfig),
+            nextUpgradeContext: upgradeContext,
+            nextUpgradeAssessment: assessment,
           })
         })
       } else {
-        void nudgeUpgrade(opts.dir, developmentConfig, 'dev').catch((error) => {
+        void nudgeUpgrade(
+          opts.dir,
+          developmentConfig,
+          'dev',
+          null,
+          upgradeAdvisory.assessment
+        ).catch((error) => {
           const { printAndExit } =
             require('./utils') as typeof import('./utils')
           const exitCode =
@@ -369,6 +388,39 @@ export async function initialize(opts: {
 
         res.statusCode = 200
         res.end(JSON.stringify(getRequestInsightsSnapshot()))
+        return
+      }
+
+      if (pathname === UPGRADE_ADVISORY_DEV_ENDPOINT) {
+        if (
+          development &&
+          blockCrossSiteDEV(
+            req,
+            res,
+            development.config.allowedDevOrigins,
+            opts.hostname
+          )
+        ) {
+          return
+        }
+
+        if (req.method !== 'GET') {
+          res.statusCode = 405
+          res.end('Method Not Allowed')
+          return
+        }
+
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.setHeader('Cache-Control', 'no-store')
+        if (!upgradeAdvisory) {
+          res.statusCode = 404
+          res.end()
+          return
+        }
+
+        await upgradeAdvisory.assessment
+        res.statusCode = 200
+        res.end(JSON.stringify(upgradeAdvisory.getSnapshot()))
         return
       }
     }
