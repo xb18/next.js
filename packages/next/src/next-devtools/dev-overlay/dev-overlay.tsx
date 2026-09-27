@@ -10,6 +10,11 @@ import { PanelRouter } from './menu/panel-router'
 import { PanelRouterContext, type PanelStateKind } from './menu/context'
 import { useDevOverlayContext } from '../dev-overlay.browser'
 import { ACTION_INSTANT_ERRORS_CLEAR, type DispatcherEvent } from './shared'
+import { ACTION_UPGRADE_ADVISORY } from './shared'
+import {
+  UPGRADE_ADVISORY_DEV_ENDPOINT,
+  type UpgradeAdvisory,
+} from '../shared/upgrade-advisory'
 
 export const RenderErrorContext = createContext<{
   runtimeErrors: ReadyRuntimeError[]
@@ -50,6 +55,31 @@ export function DevOverlay() {
 
   useClearInstantErrorsOnNav(state.page, dispatch)
 
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetch(
+      `${process.env.__NEXT_ROUTER_BASEPATH || ''}${UPGRADE_ADVISORY_DEV_ENDPOINT}`,
+      { signal: controller.signal }
+    )
+      .then((response) => {
+        if (!response.ok) {
+          return null
+        }
+        return response.json() as Promise<UpgradeAdvisory | null>
+      })
+      .then((advisory) => {
+        if (!controller.signal.aborted && advisory) {
+          dispatch({ type: ACTION_UPGRADE_ADVISORY, advisory })
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          console.error('Failed to fetch upgrade advisory', error)
+        }
+      })
+    return () => controller.abort()
+  }, [dispatch])
+
   const triggerRef = useRef<HTMLButtonElement>(null)
   return (
     <ShadowPortal>
@@ -70,9 +100,11 @@ export function DevOverlay() {
                   <RenderErrorContext
                     value={{
                       runtimeErrors,
-                      totalErrorCount,
+                      totalErrorCount:
+                        totalErrorCount + (state.upgradeAdvisory ? 1 : 0),
                       normalErrorCount,
-                      instantErrorCount,
+                      instantErrorCount:
+                        instantErrorCount + (state.upgradeAdvisory ? 1 : 0),
                     }}
                   >
                     <PanelRouterContext
