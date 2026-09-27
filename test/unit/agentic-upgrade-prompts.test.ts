@@ -45,7 +45,9 @@ jest.mock('next/dist/compiled/cli-select', () => ({
   __esModule: true,
   default: jest.fn(),
 }))
-jest.mock('next/dist/compiled/cross-spawn', () => jest.fn())
+jest.mock('next/dist/compiled/cross-spawn', () => {
+  return Object.assign(jest.fn(), { sync: jest.fn() })
+})
 jest.mock('next/dist/lib/find-pages-dir', () => ({
   findDir: jest.fn(),
 }))
@@ -74,7 +76,9 @@ jest.mock('next/dist/telemetry/agent-name', () => ({
   getAgentName: jest.fn(),
 }))
 const createSpinner = require('next/dist/build/spinner').default as jest.Mock
-const crossSpawn = require('next/dist/compiled/cross-spawn') as jest.Mock
+const crossSpawn = require('next/dist/compiled/cross-spawn') as jest.Mock & {
+  sync: jest.Mock
+}
 const cliVersion: string = require('next/package.json').version
 const restoreDescriptors: Array<() => void> = []
 
@@ -140,6 +144,11 @@ describe('agentic upgrade prompts', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    crossSpawn.sync.mockReturnValue({
+      status: 0,
+      stdout:
+        '  --approve-for-me  Route approval requests through automatic review\n  --permission-mode <mode>  Permission mode to use for the session\n                                        (choices: "acceptEdits", "auto", "manual")',
+    })
     process.env.__NEXT_UPGRADE_USE_CURRENT_CLI = '1'
     process.env.__NEXT_UPGRADE_EXPECTED_CLI_VERSION = cliVersion
     global.fetch = jest.fn()
@@ -482,6 +491,7 @@ describe('agentic upgrade prompts', () => {
         .mockResolvedValueOnce({ id: agent } as never)
         .mockResolvedValueOnce({ id: model } as never)
         .mockResolvedValueOnce({ id: effort } as never)
+        .mockResolvedValueOnce({ id: 'yes' } as never)
         .mockResolvedValueOnce({ id: 'no' } as never)
       crossSpawn.mockImplementation(() => {
         const child = new EventEmitter()
@@ -497,7 +507,13 @@ describe('agentic upgrade prompts', () => {
       expect(prompt).toHaveBeenCalledWith(false)
       expect(crossSpawn).toHaveBeenCalledWith(
         expectedHarnessPath(agent),
-        [...flags, 'In-place prompt'],
+        [
+          ...flags,
+          ...(agent === 'codex'
+            ? ['--approve-for-me']
+            : ['--permission-mode', 'auto']),
+          'In-place prompt',
+        ],
         { cwd: '/workspace/app', stdio: 'inherit' }
       )
       const modelMenu = jest.mocked(cliSelect).mock.calls[1][0]
@@ -513,7 +529,14 @@ describe('agentic upgrade prompts', () => {
           : ['low', 'medium', 'high', 'xhigh', 'max', 'ultra', 'cancel']
       )
       expect(effortMenu.defaultValue).toBe(2)
-      expect(jest.mocked(cliSelect).mock.calls[3][0].values).toEqual({
+      const permissionMenu = jest.mocked(cliSelect).mock.calls[3][0]
+      expect(permissionMenu.values).toEqual({
+        yes: 'Yes',
+        no: 'No, ask for approval',
+        cancel: 'Cancel',
+      })
+      expect(permissionMenu.defaultValue).toBe(0)
+      expect(jest.mocked(cliSelect).mock.calls[4][0].values).toEqual({
         yes: 'Yes',
         no: 'No',
       })
@@ -525,10 +548,184 @@ describe('agentic upgrade prompts', () => {
       ).toBeLessThan(
         questions.findIndex((value) => value.includes('reasoning effort'))
       )
+      expect(
+        questions.findIndex((value) => value.includes('reasoning effort'))
+      ).toBeLessThan(
+        questions.findIndex((value) => value.includes('permission mode'))
+      )
     }
   )
 
-  it('keeps the existing agent in its session', async () => {
+  it.each([
+    ['codex', 'yes', ['--approve-for-me']],
+    [
+      'codex',
+      'no',
+      ['--sandbox', 'workspace-write', '--ask-for-approval', 'on-request'],
+    ],
+    ['claude', 'yes', ['--permission-mode', 'auto']],
+    ['claude', 'no', ['--permission-mode', 'manual']],
+  ])('passes %s %s permission flags', async (agent, useAuto, flags) => {
+    process.env.PATH = '/agents'
+    overrideTTY(process.stdin)
+    overrideTTY(process.stdout)
+    jest.mocked(getAgentName).mockResolvedValue(null)
+    jest.mocked(access).mockResolvedValue(undefined)
+    jest.mocked(stat).mockResolvedValue({ isFile: () => true } as never)
+    jest
+      .mocked(cliSelect)
+      .mockResolvedValueOnce({ id: agent } as never)
+      .mockResolvedValueOnce({
+        id: agent === 'codex' ? 'gpt-5.6-terra' : 'opus',
+      } as never)
+      .mockResolvedValueOnce({ id: 'high' } as never)
+      .mockResolvedValueOnce({ id: useAuto } as never)
+      .mockResolvedValueOnce({ id: 'no' } as never)
+    crossSpawn.mockImplementation(() => {
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('close', 0, null))
+      return child
+    })
+
+    await handoffUpgrade('Upgrade prompt', '/workspace/app')
+
+    expect(crossSpawn).toHaveBeenCalledWith(
+      expectedHarnessPath(agent),
+      [
+        '--model',
+        agent === 'codex' ? 'gpt-5.6-terra' : 'opus',
+        ...(agent === 'codex'
+          ? ['-c', 'model_reasoning_effort=high']
+          : ['--effort', 'high']),
+        ...flags,
+        'Upgrade prompt',
+      ],
+      { cwd: '/workspace/app', stdio: 'inherit' }
+    )
+  })
+
+  it('defaults to approval requests when the Codex CLI lacks Auto review', async () => {
+    process.env.PATH = '/agents'
+    overrideTTY(process.stdin)
+    overrideTTY(process.stdout)
+    jest.mocked(getAgentName).mockResolvedValue(null)
+    jest.mocked(access).mockResolvedValue(undefined)
+    jest.mocked(stat).mockResolvedValue({ isFile: () => true } as never)
+    crossSpawn.sync.mockReturnValue({
+      status: 0,
+      stdout: '  --ask-for-approval <APPROVAL_POLICY>',
+    })
+    jest
+      .mocked(cliSelect)
+      .mockResolvedValueOnce({ id: 'codex' } as never)
+      .mockResolvedValueOnce({ id: 'gpt-5.6-terra' } as never)
+      .mockResolvedValueOnce({ id: 'high' } as never)
+      .mockResolvedValueOnce({ id: 'no' } as never)
+    crossSpawn.mockImplementation(() => {
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('close', 0, null))
+      return child
+    })
+
+    await handoffUpgrade('Upgrade prompt', '/workspace/app')
+
+    expect(crossSpawn.sync).toHaveBeenCalledWith(
+      expectedHarnessPath('codex'),
+      ['--help'],
+      expect.objectContaining({ encoding: 'utf8' })
+    )
+    expect(jest.mocked(cliSelect).mock.calls[3][0].values).toEqual({
+      yes: 'Yes',
+      no: 'No',
+    })
+    expect(crossSpawn).toHaveBeenCalledWith(
+      expectedHarnessPath('codex'),
+      [
+        '--model',
+        'gpt-5.6-terra',
+        '-c',
+        'model_reasoning_effort=high',
+        '--sandbox',
+        'workspace-write',
+        '--ask-for-approval',
+        'on-request',
+        'Upgrade prompt',
+      ],
+      { cwd: '/workspace/app', stdio: 'inherit' }
+    )
+  })
+
+  it('uses explicit approval mode when the Claude CLI lacks Auto mode', async () => {
+    process.env.PATH = '/agents'
+    overrideTTY(process.stdin)
+    overrideTTY(process.stdout)
+    jest.mocked(getAgentName).mockResolvedValue(null)
+    jest.mocked(access).mockResolvedValue(undefined)
+    jest.mocked(stat).mockResolvedValue({ isFile: () => true } as never)
+    crossSpawn.sync.mockReturnValue({
+      status: 0,
+      stdout:
+        '  --permission-mode <mode>  Permission mode to use for the session\n                                        (choices: "default", "acceptEdits", "plan", "dontAsk", "bypassPermissions")',
+    })
+    jest
+      .mocked(cliSelect)
+      .mockResolvedValueOnce({ id: 'claude' } as never)
+      .mockResolvedValueOnce({ id: 'opus' } as never)
+      .mockResolvedValueOnce({ id: 'high' } as never)
+      .mockResolvedValueOnce({ id: 'no' } as never)
+    crossSpawn.mockImplementation(() => {
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('close', 0, null))
+      return child
+    })
+
+    await handoffUpgrade('Upgrade prompt', '/workspace/app')
+
+    expect(crossSpawn.sync).toHaveBeenCalledWith(
+      expectedHarnessPath('claude'),
+      ['--help'],
+      expect.objectContaining({ encoding: 'utf8' })
+    )
+    expect(jest.mocked(cliSelect).mock.calls[3][0].values).toEqual({
+      yes: 'Yes',
+      no: 'No',
+    })
+    expect(crossSpawn).toHaveBeenCalledWith(
+      expectedHarnessPath('claude'),
+      [
+        '--model',
+        'opus',
+        '--effort',
+        'high',
+        '--permission-mode',
+        'default',
+        'Upgrade prompt',
+      ],
+      { cwd: '/workspace/app', stdio: 'inherit' }
+    )
+  })
+
+  it('cancels the handoff when permission selection is cancelled', async () => {
+    process.env.PATH = '/agents'
+    overrideTTY(process.stdin)
+    overrideTTY(process.stdout)
+    jest.mocked(getAgentName).mockResolvedValue(null)
+    jest.mocked(access).mockResolvedValue(undefined)
+    jest.mocked(stat).mockResolvedValue({ isFile: () => true } as never)
+    jest
+      .mocked(cliSelect)
+      .mockResolvedValueOnce({ id: 'codex' } as never)
+      .mockResolvedValueOnce({ id: 'gpt-5.6-terra' } as never)
+      .mockResolvedValueOnce({ id: 'high' } as never)
+      .mockResolvedValueOnce({ id: 'cancel' } as never)
+
+    await handoffUpgrade('Upgrade prompt', '/workspace/app')
+
+    expect(process.exitCode).toBe(1)
+    expect(crossSpawn).not.toHaveBeenCalled()
+  })
+
+  it('uses the existing agent settings without prompting interactively', async () => {
     const prompt = jest.fn(() => 'Prepared upgrade prompt.')
 
     await handoffUpgrade(prompt, '/workspace/app')
@@ -552,6 +749,7 @@ describe('agentic upgrade prompts', () => {
       .mockResolvedValueOnce({ id: 'gpt-5.6-terra' } as never)
       .mockResolvedValueOnce({ id: 'high' } as never)
       .mockResolvedValueOnce({ id: 'yes' } as never)
+      .mockResolvedValueOnce({ id: 'yes' } as never)
     crossSpawn.mockImplementation(() => {
       const child = new EventEmitter()
       process.nextTick(() => child.emit('close', 0, null))
@@ -569,6 +767,7 @@ describe('agentic upgrade prompts', () => {
         'gpt-5.6-terra',
         '-c',
         'model_reasoning_effort=high',
+        '--approve-for-me',
         'Worktree prompt',
       ],
       { cwd: '/workspace/app', stdio: 'inherit' }

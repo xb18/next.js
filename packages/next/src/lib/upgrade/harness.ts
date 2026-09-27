@@ -32,6 +32,13 @@ const UPGRADE_MODELS = {
   ],
 } as const
 
+const CODEX_APPROVAL_ARGS = [
+  '--sandbox',
+  'workspace-write',
+  '--ask-for-approval',
+  'on-request',
+] as const
+
 type UpgradeHarness = {
   name: keyof typeof UPGRADE_MODELS
   path: string
@@ -88,6 +95,38 @@ async function chooseWorktree(): Promise<boolean> {
 
 function getHarnessDisplayName(name: UpgradeHarness['name']): string {
   return name === 'codex' ? 'Codex' : 'Claude Code'
+}
+
+function supportsCodexAutoReview(path: string): boolean {
+  const result = spawn.sync(path, ['--help'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  })
+  return result.status === 0 && /--approve-for-me\b/.test(result.stdout ?? '')
+}
+
+function getClaudePermissionSupport(path: string) {
+  const result = spawn.sync(path, ['--help'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  })
+  const permissionModeHelp =
+    result.status === 0
+      ? result.stdout?.match(
+          /--permission-mode[^\n]*(?:\n[ \t]{8,}[^\n]*){0,4}/
+        )?.[0]
+      : null
+  const choices = permissionModeHelp?.match(/\(choices:\s*([^)]+)\)/)?.[1]
+  const supportedModes = new Set(choices?.match(/[A-Za-z]+/g) ?? [])
+
+  return {
+    auto: supportedModes.has('auto'),
+    approvalMode: supportedModes.has('manual')
+      ? 'manual'
+      : supportedModes.has('default')
+        ? 'default'
+        : null,
+  }
 }
 
 async function findHarnesses(): Promise<UpgradeHarness[]> {
@@ -216,7 +255,8 @@ function launchHarness(
   prompt: string,
   directory: string,
   model: string,
-  effort: string
+  effort: string,
+  permissionArgs: readonly string[]
 ): Promise<number> {
   // Windows shell shims cannot carry literal line breaks in an argument.
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(harness.path)) {
@@ -225,8 +265,15 @@ function launchHarness(
 
   const args =
     harness.name === 'codex'
-      ? ['--model', model, '-c', `model_reasoning_effort=${effort}`, prompt]
-      : ['--model', model, '--effort', effort, prompt]
+      ? [
+          '--model',
+          model,
+          '-c',
+          `model_reasoning_effort=${effort}`,
+          ...permissionArgs,
+          prompt,
+        ]
+      : ['--model', model, '--effort', effort, ...permissionArgs, prompt]
   return runChildProcess(harness.path, args, {
     cwd: directory,
     stdio: 'inherit',
@@ -257,7 +304,7 @@ export async function handoffUpgrade(
     return
   }
 
-  // Let the selected agent take over the terminal with its existing permissions.
+  // Let the selected agent take over the terminal with the chosen permissions.
   const harness = await chooseHarness(installed)
 
   if (harness === 'copy') {
@@ -294,6 +341,45 @@ export async function handoffUpgrade(
     process.exitCode = 1
     return
   }
+  let autoPermissionArgs: string[] | null
+  let approvalPermissionArgs: string[]
+  if (harness.name === 'codex') {
+    autoPermissionArgs = supportsCodexAutoReview(harness.path)
+      ? ['--approve-for-me']
+      : null
+    approvalPermissionArgs = [...CODEX_APPROVAL_ARGS]
+  } else {
+    const { auto, approvalMode } = getClaudePermissionSupport(harness.path)
+    if (!approvalMode) {
+      Log.error('Could not determine a supported Claude approval mode.')
+      process.exitCode = 1
+      return
+    }
+    autoPermissionArgs = auto ? ['--permission-mode', 'auto'] : null
+    approvalPermissionArgs = ['--permission-mode', approvalMode]
+  }
+
+  let permissionArgs = approvalPermissionArgs
+  if (autoPermissionArgs) {
+    const useAuto = await chooseOption(
+      `Use Auto permission mode for ${getHarnessDisplayName(harness.name)}?`,
+      { yes: 'Yes', no: 'No, ask for approval' },
+      0
+    )
+    if (useAuto !== 'yes' && useAuto !== 'no') {
+      Log.bootstrap(`  ${dim('Upgrade cancelled.')}\n`)
+      process.exitCode = 1
+      return
+    }
+    if (useAuto === 'yes') {
+      permissionArgs = autoPermissionArgs
+    }
+  } else {
+    Log.info(
+      dim('Auto permission mode is unavailable; using approval requests.')
+    )
+  }
+
   let useWorktree: boolean
   try {
     useWorktree = await chooseWorktree()
@@ -314,7 +400,8 @@ export async function handoffUpgrade(
       resolvePrompt(prompt, useWorktree),
       directory,
       model.id,
-      effort
+      effort,
+      permissionArgs
     )
   } catch {
     Log.error(`Could not start ${getHarnessDisplayName(harness.name)}.`)
