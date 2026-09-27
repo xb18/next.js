@@ -268,17 +268,23 @@ program
     }
     setupProfilesDir(directory || process.cwd())
 
+    // Select the bundler before upgrade preflight evaluates next.config.
+    const bundler = parseBundlerArgs(options)
+
     // ensure process exits after build completes so open handles/connections
     // don't cause process to hang
-    return import('../cli/next-build.js').then((mod) =>
-      mod.nextBuild(options, directory).then(async () => {
-        // Save CPU profile before exiting if enabled
-        if (options.experimentalCpuProf) {
-          await mod.saveCpuProfile()
-        }
-        process.exit(0)
-      })
-    )
+    return import('../lib/upgrade/upgrade-prompt.js').then(async (prompt) => {
+      if (await prompt.runBuildWithUpgradePrompt(directory)) {
+        return
+      }
+      const mod = await import('../cli/next-build.js')
+      await mod.nextBuild(options, directory, bundler)
+      // Save CPU profile before exiting if enabled
+      if (options.experimentalCpuProf) {
+        await mod.saveCpuProfile()
+      }
+      process.exit(0)
+    })
   })
   .usage('[directory] [options]')
 

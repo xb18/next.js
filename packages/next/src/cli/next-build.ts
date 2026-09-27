@@ -10,7 +10,7 @@ import isError from '../lib/is-error'
 import { getProjectDir } from '../lib/get-project-dir'
 import { enableMemoryDebuggingMode } from '../lib/memory/startup'
 import { disableMemoryDebuggingMode } from '../lib/memory/shutdown'
-import { Bundler, parseBundlerArgs } from '../lib/bundler'
+import { Bundler } from '../lib/bundler'
 import { parseBuildPathsInput } from '../lib/resolve-build-paths'
 
 export type NextBuildOptions = {
@@ -35,7 +35,11 @@ export type NextBuildOptions = {
   internalTrace?: string | boolean
 }
 
-const nextBuild = async (options: NextBuildOptions, directory?: string) => {
+const nextBuild = async (
+  options: NextBuildOptions,
+  directory: string | undefined,
+  bundler: Bundler
+) => {
   process.title = `next-build (v${process.env.__NEXT_VERSION})`
   const onTerminate = () => {
     saveCpuProfile()
@@ -44,10 +48,6 @@ const nextBuild = async (options: NextBuildOptions, directory?: string) => {
   const onInterrupt = () => {
     saveCpuProfile()
     process.exit(130)
-  }
-  const onHangup = () => {
-    saveCpuProfile()
-    process.exit(129)
   }
   process.on('SIGTERM', onTerminate)
   process.on('SIGINT', onInterrupt)
@@ -70,8 +70,6 @@ const nextBuild = async (options: NextBuildOptions, directory?: string) => {
   if (experimentalUploadTrace && !process.env.NEXT_TRACE_UPLOAD_DISABLED) {
     traceUploadUrl = experimentalUploadTrace
   }
-
-  const bundler = parseBundlerArgs(options)
 
   if ((analyze || experimentalAnalyze) && bundler !== Bundler.Turbopack) {
     printAndExit('--analyze is only compatible with the Turbopack bundler.')
@@ -127,14 +125,6 @@ const nextBuild = async (options: NextBuildOptions, directory?: string) => {
     }).filter(([_, value]) => value !== undefined && value !== false)
   )
 
-  const { shouldPromptForUpgrade, runUpgrade } = await import(
-    '../lib/upgrade/nudge.js'
-  )
-  const humanUpgrade = await shouldPromptForUpgrade()
-  if (humanUpgrade) {
-    process.on('SIGHUP', onHangup)
-  }
-
   return build(
     dir,
     analyze || experimentalAnalyze,
@@ -147,20 +137,8 @@ const nextBuild = async (options: NextBuildOptions, directory?: string) => {
     experimentalBuildMode,
     traceUploadUrl,
     debugBuildPathsPatterns,
-    enabledFeatures,
-    humanUpgrade
+    enabledFeatures
   )
-    .then(async (action) => {
-      if (action === 'interrupt') {
-        process.exit(130)
-      }
-      if (action) {
-        process.off('SIGTERM', onTerminate)
-        process.off('SIGINT', onInterrupt)
-        process.off('SIGHUP', onHangup)
-        process.exit(await runUpgrade(dir, action))
-      }
-    })
     .catch((err) => {
       if (experimentalDebugMemoryUsage) {
         disableMemoryDebuggingMode()
