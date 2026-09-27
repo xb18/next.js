@@ -226,7 +226,8 @@ export async function initialize(opts: {
       developmentConfig.experimental.agenticAutoUpgrade === 'security' ||
       developmentConfig.experimental.agenticAutoUpgrade === 'latest' ||
       developmentConfig.experimental.agenticAutoUpgrade === 'future' ||
-      process.env.__NEXT_AGENTIC_AUTO_UPGRADE
+      process.env.__NEXT_AGENTIC_AUTO_UPGRADE ||
+      process.env.__NEXT_AGENT_UPGRADE_FORCE_DEVTOOLS_FOR_TESTING === '1'
     ) {
       const { nudgeUpgrade, getUpgradeContext } =
         require('../../lib/upgrade/nudge') as typeof import('../../lib/upgrade/nudge')

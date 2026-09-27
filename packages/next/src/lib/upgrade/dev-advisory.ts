@@ -8,6 +8,16 @@ export function createUpgradeAdvisory(
   config: UpgradeContext,
   installedVersion: string
 ) {
+  const createSnapshot = (policy: string): UpgradeAdvisory => {
+    return {
+      installedVersion,
+      prompt: `Run \`next upgrade --ai=${policy}\` from this app's directory (${directory}) and follow its instructions.`,
+    }
+  }
+  // Fall back to a simulated insight for preview and tests when no security
+  // advisory was found. Keep the actual assessment for upgrade nudges.
+  const simulateSecurityInsight =
+    process.env.__NEXT_AGENT_UPGRADE_FORCE_DEVTOOLS_FOR_TESTING === '1'
   let snapshot: UpgradeAdvisory | null = null
   const policy = config.experimental.agenticAutoUpgrade
   const forced = process.env.__NEXT_AGENTIC_AUTO_UPGRADE === policy
@@ -17,10 +27,9 @@ export function createUpgradeAdvisory(
       : assessUpgrade(directory, config, installedVersion, null, forced)
   ).then((advisory) => {
     if (advisory?.kind === 'security') {
-      snapshot = {
-        installedVersion,
-        prompt: `Run \`next upgrade --ai=${advisory.policy}\` from this app's directory (${directory}) and follow its instructions.`,
-      }
+      snapshot = createSnapshot(advisory.policy)
+    } else if (simulateSecurityInsight) {
+      snapshot = createSnapshot('security')
     }
     return advisory
   })
