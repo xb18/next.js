@@ -1694,6 +1694,7 @@ mod tests {
     /// If encoding a captured task panics, that task remains in the shard work list so the
     /// shard's drop restores it as modified for the next snapshot.
     #[tokio::test(flavor = "multi_thread")]
+    #[cfg_attr(target_family = "wasm", ignore = "no unwinding on wasm")]
     async fn panicking_process_restores_current_captured_task() {
         let storage = Storage::new(2, true, false);
         let task_id = non_transient_task(1);
