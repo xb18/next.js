@@ -70,7 +70,7 @@ use crate::{
             make_task_dirty_internal, prepare_new_children, update_cell,
         },
         snapshot_coordinator::{OperationGuard, SlowSettle, SnapshotCoordinator},
-        storage::{Storage, encode_snapshot_item},
+        storage::{SnapshotMask, Storage, encode_snapshot_item},
         storage_schema::{TaskStorage, TaskStorageAccessors},
     },
     data::{
@@ -1199,11 +1199,11 @@ impl TurboTasksBackend {
         let (snapshot_guard, has_modifications) = self.storage.start_snapshot();
 
         let snapshot_time = Instant::now();
-        drop(snapshot_phase);
 
         if !has_modifications && gc_roots_to_persist.is_none() {
             // No tasks modified since the last snapshot — drop the guard (which
             // calls end_snapshot) and skip the expensive O(N) scan.
+            drop(snapshot_phase);
             drop(snapshot_guard);
             return Ok(Some((start, false, gc_outcome)));
         }
@@ -1369,14 +1369,17 @@ impl TurboTasksBackend {
         let task_cache_stats: Mutex<FxHashMap<_, TaskCacheStats>> =
             Mutex::new(FxHashMap::default());
 
-        // Encode each task's modified categories. We only encode categories with `modified` set,
-        // meaning the category was actually dirtied. Categories restored from disk but never
-        // modified don't need re-persisting since the on-disk version is still valid.
-        // Tasks that were modified again during snapshot mode were already encoded by
+        // Encode each task's captured categories (`mask`). Only categories with `modified` set are
+        // captured, meaning the category was actually dirtied. Categories restored from disk but
+        // never modified don't need re-persisting since the on-disk version is still valid.
+        // Captured tasks that were modified again before being persisted were already encoded by
         // `track_modification` (see `Storage::snapshots`), and are yielded without calling this.
         // (Those rare items are not included in the `print_cache_item_size` statistics.)
-        let process = |task_id: TaskId, inner: &TaskStorage, buffer: &mut TurboBincodeBuffer| {
-            let item = encode_snapshot_item(task_id, inner, self.gc_enabled, buffer)
+        let process = |task_id: TaskId,
+                       inner: &TaskStorage,
+                       mask: SnapshotMask,
+                       buffer: &mut TurboBincodeBuffer| {
+            let item = encode_snapshot_item(task_id, inner, mask, self.gc_enabled, buffer)
                 .unwrap_or_else(|err| {
                     panic!(
                         "Serializing task {} failed: {:?}",
@@ -1403,9 +1406,12 @@ impl TurboTasksBackend {
             item
         };
 
+        // The scan captures the modified tasks, so it must run while operations are still
+        // excluded. Encoding happens later, in the returned iterators.
         let task_snapshots =
             self.storage
                 .take_snapshot(snapshot_guard, &process, reason.drain_entries());
+        drop(snapshot_phase);
 
         drop(snapshot_span);
         let snapshot_duration = start.elapsed();
